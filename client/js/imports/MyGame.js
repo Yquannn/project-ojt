@@ -1,15 +1,20 @@
 import findShortestPath from '../imports/controllers/pathFindings.js'; // Import pathfinding
 import { Vec2 } from './controllers/linAlg.js';
+import { createPlayerAnimations } from './animaation/playerAnimation.js'; // Import the animation module
 
 class MyGame extends Phaser.Scene {
   constructor() {
     super({ key: 'MyGame' });
     this.boundaries = new Set(); // Set to hold non-walkable tiles
-    this.tileSize = 20; // Tile size in pixels
+    this.tileSize = 20; // Tile size in pixels (you can keep this the same)
     this.path = []; // To store the calculated path
     this.currentPathIndex = 0; // To track current position in the path
     this.isMoving = false;
-    this.speed = 100; // Movement speed of the player
+    this.speed = 50; 
+    this.chopping = false; // To prevent chopping while already chopping
+    this.chopTimer = null; // To manage the timer
+    this.timerText = null; // To display the timer
+    this.isAutomated = false
   }
 
   preload() {
@@ -19,7 +24,7 @@ class MyGame extends Phaser.Scene {
   }
 
   create() {
-    const baseScale = 1;
+    const baseScale = 1.5;
     const tilePixelSize = this.tileSize; // Match the tile size
     const gameWidth = this.cameras.main.width;
     const gameHeight = this.cameras.main.height;
@@ -31,6 +36,7 @@ class MyGame extends Phaser.Scene {
       gameWidth / this.background.width,
       gameHeight / this.background.height
     );
+    createPlayerAnimations(this); // Initialize animations
 
     // Collision map setup
     const rowLength = 100; // Length of a row in the collision data
@@ -47,7 +53,14 @@ class MyGame extends Phaser.Scene {
     const centerX = (rowLength * tilePixelSize) / 2;
     const centerY = (collisionMap.length * tilePixelSize) / 2;
     this.player = this.physics.add.sprite(centerX, centerY, "player");
-    this.player.setDisplaySize(this.tileSize, this.tileSize);
+
+    // Set the collision box size to match tile size (optional)
+    this.player.setSize(this.tileSize, this.tileSize);
+    this.player.setOffset(10, 0); // Optional: adjust the offset for better alignment
+
+    // Make the player sprite larger by scaling the sprite
+    const scaleFactor = 1;
+    this.player.setScale(scaleFactor);
     this.player.setCollideWorldBounds(true);
 
     // Collision between player and boundaries
@@ -80,34 +93,16 @@ class MyGame extends Phaser.Scene {
     collisionMap.forEach((row, rowIndex) => {
       row.forEach((symbol, colIndex) => {
         if (symbol === 4098) { // Boundary symbol (adjust based on your map)
-          // Calculate the correct position for the obstacle based on the collision size
-          const boundaryX = colIndex * this.tileSize + this.tileSize / 2; // Center the obstacle on the tile
+          const boundaryX = colIndex * this.tileSize + this.tileSize / 2;
           const boundaryY = rowIndex * this.tileSize + this.tileSize / 2;
-  
-          // Create a smaller obstacle
-          const smallObstacleSize = this.tileSize * 0.5; // Set the size to half of the tile size
-          const obstacle = this.add.image(boundaryX, boundaryY, 'obstacle');
-  
-          // Set the display size to be smaller than the tile
-          obstacle.setDisplaySize(smallObstacleSize, smallObstacleSize); // Smaller obstacle
-  
-          // Ensure the obstacle is aligned with the grid (optional for precision)
-          obstacle.setOrigin(-0, -0); // Align the center of the obstacle with the tile grid
-  
-          // Hide the obstacle image
-          obstacle.setVisible(false); // This hides the obstacle image but keeps it in the game
-  
-          // Add the position of the obstacle to the boundaries for pathfinding
+          const obstacle = this.physics.add.staticImage(boundaryX, boundaryY, 'obstacle');
+          obstacle.setDisplaySize(this.tileSize, this.tileSize);
+          obstacle.setVisible(false);
           this.boundaries.add(`${colIndex},${rowIndex}`);
-  
-          console.log(`Obstacle created at: row ${rowIndex}, col ${colIndex}`);
         }
       });
     });
   }
-  
-  
-  
 
   getClickedPosition(pointer) {
     const x = Math.floor(pointer.worldX / this.tileSize);
@@ -120,15 +115,17 @@ class MyGame extends Phaser.Scene {
 
     if (this.cursors.left.isDown) {
       this.movePlayer(-1, 0);
+      this.player.anims.play('walk-left', true);
     } else if (this.cursors.right.isDown) {
       this.movePlayer(1, 0);
+      this.player.anims.play('walk-right', true);
     } else if (this.cursors.up.isDown) {
       this.movePlayer(0, -1);
+      this.player.anims.play('walk-up', true);
     } else if (this.cursors.down.isDown) {
       this.movePlayer(0, 1);
-    }
-
-    if (this.isMoving && this.path.length > 0) {
+      this.player.anims.play('walk-down', true);
+    } else if (this.isMoving && this.path.length > 0) {
       const targetPoint = this.path[this.currentPathIndex];
       const targetX = targetPoint.x * this.tileSize + this.tileSize / 2;
       const targetY = targetPoint.y * this.tileSize + this.tileSize / 2;
@@ -147,14 +144,20 @@ class MyGame extends Phaser.Scene {
           Math.cos(angle) * this.speed,
           Math.sin(angle) * this.speed
         );
+
+        // Determine animation based on direction
+        if (Math.abs(Math.cos(angle)) > Math.abs(Math.sin(angle))) {
+          this.player.anims.play(Math.cos(angle) > 0 ? 'walk-right' : 'walk-left', true);
+        } else {
+          this.player.anims.play(Math.sin(angle) > 0 ? 'walk-down' : 'walk-up', true);
+        }
       }
+    } else {
+      this.player.anims.stop();
     }
   }
 
   movePlayer(dx, dy) {
-    const newX = this.player.x + dx * this.speed;
-    const newY = this.player.y + dy * this.speed;
-
     this.player.setVelocity(dx * this.speed, dy * this.speed);
   }
 }
